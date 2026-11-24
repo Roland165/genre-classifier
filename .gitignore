@@ -229,3 +229,4 @@ mlflow.db
 /data/v1
 /data/v2
 *.csv
+test-model/
