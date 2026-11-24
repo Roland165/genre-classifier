@@ -1,3 +1,223 @@
-<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Genre classifier</title></head>
-<body><h1>Genre classifier</h1><p>Interface à venir.</p></body></html>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quel genre musical ?</title>
+<style>
+  :root {
+    --paper: #eef1f6;
+    --panel: #ffffff;
+    --ink: #1b2340;
+    --muted: #5d6685;
+    --line: #d5dae6;
+    --accent: #2f4bff;
+    --accent-ink: #ffffff;
+    --bar: #ffb000;
+    --error: #b3261e;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #12162b;
+      --panel: #1b2140;
+      --ink: #eef1fb;
+      --muted: #a2abc9;
+      --line: #323a63;
+      --accent: #7f93ff;
+      --accent-ink: #10142b;
+      --bar: #ffc233;
+      --error: #ff8a80;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 20px 24px; }
+  h1 { font-size: 2.1rem; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .lead { color: var(--muted); margin: 0 0 24px; max-width: 60ch; }
+
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 20px; }
+  .examples span { color: var(--muted); margin-right: 4px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; padding: 8px 14px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.primary {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+    font-weight: 600; padding: 11px 22px;
+  }
+  button:disabled { opacity: .6; cursor: progress; }
+
+  .layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+
+  .fader { display: grid; grid-template-columns: 9.5rem 1fr 3.6rem; gap: 12px; align-items: center; padding: 7px 0; }
+  .fader label { font-weight: 500; }
+  .fader output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .actions { margin-top: 16px; }
+
+  h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  .empty { color: var(--muted); margin: 0; }
+  .result { display: grid; grid-template-columns: 6.5rem 1fr 3.4rem; gap: 10px; align-items: center; padding: 8px 0; }
+  .result .name { font-weight: 600; }
+  .track { background: var(--paper); border-radius: 999px; height: 14px; overflow: hidden; }
+  .fill { background: var(--bar); height: 100%; border-radius: 999px; transition: width .35s ease; }
+  .result .pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .result:first-of-type .name { font-size: 1.1rem; }
+  .error { color: var(--error); margin: 0; }
+  @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+
+  footer { margin-top: 24px; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Quel genre musical ?</h1>
+  <p class="lead">Règle les caractéristiques audio d'un morceau et le modèle donne les trois genres les plus probables.</p>
+
+  <div class="examples" id="examples">
+    <span>Exemples :</span>
+  </div>
+
+  <div class="layout">
+    <section class="panel" aria-label="Caractéristiques audio">
+      <div id="faders"></div>
+      <div class="actions">
+        <button class="primary" id="predict" type="button">Prédire</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-live="polite">
+      <h2>Genres les plus probables</h2>
+      <div id="out"><p class="empty">Clique sur « Prédire » pour voir le résultat.</p></div>
+    </section>
+  </div>
+
+  <footer id="footer">Modèle genre-classifier — chargement…</footer>
+</main>
+
+<script>
+  // Plages identiques au contrat de données (section 1.2 du plan)
+  const FEATURES = [
+    { key: "danceability",     label: "Danceability",     min: 0,   max: 1,   step: 0.01, def: 0.5 },
+    { key: "energy",           label: "Energy",           min: 0,   max: 1,   step: 0.01, def: 0.5 },
+    { key: "loudness",         label: "Loudness (dB)",    min: -60, max: 5,   step: 0.5,  def: -8 },
+    { key: "speechiness",      label: "Speechiness",      min: 0,   max: 1,   step: 0.01, def: 0.1 },
+    { key: "acousticness",     label: "Acousticness",     min: 0,   max: 1,   step: 0.01, def: 0.3 },
+    { key: "instrumentalness", label: "Instrumentalness", min: 0,   max: 1,   step: 0.01, def: 0.0 },
+    { key: "liveness",         label: "Liveness",         min: 0,   max: 1,   step: 0.01, def: 0.2 },
+    { key: "valence",          label: "Valence",          min: 0,   max: 1,   step: 0.01, def: 0.5 },
+    { key: "tempo",            label: "Tempo (BPM)",      min: 30,  max: 250, step: 1,    def: 120 },
+  ];
+
+  const EXAMPLES = {
+    "Piano calme": { danceability: 0.3, energy: 0.1, loudness: -22, speechiness: 0.04, acousticness: 0.95, instrumentalness: 0.9, liveness: 0.1, valence: 0.3, tempo: 80 },
+    "Metal":       { danceability: 0.35, energy: 0.95, loudness: -4, speechiness: 0.07, acousticness: 0.02, instrumentalness: 0.1, liveness: 0.2, valence: 0.3, tempo: 150 },
+    "Rap":         { danceability: 0.8, energy: 0.65, loudness: -7, speechiness: 0.3, acousticness: 0.15, instrumentalness: 0.0, liveness: 0.15, valence: 0.5, tempo: 95 },
+  };
+
+  const fadersEl = document.getElementById("faders");
+  const inputs = {};
+
+  FEATURES.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "fader";
+    row.innerHTML =
+      `<label for="${f.key}">${f.label}</label>` +
+      `<input type="range" id="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${f.def}">` +
+      `<output for="${f.key}">${f.def}</output>`;
+    fadersEl.appendChild(row);
+    const input = row.querySelector("input");
+    const output = row.querySelector("output");
+    input.addEventListener("input", () => { output.textContent = input.value; });
+    inputs[f.key] = { input, output };
+  });
+
+  function setValues(values) {
+    for (const [k, v] of Object.entries(values)) {
+      inputs[k].input.value = v;
+      inputs[k].output.textContent = v;
+    }
+  }
+
+  const examplesEl = document.getElementById("examples");
+  Object.entries(EXAMPLES).forEach(([name, values]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = name;
+    b.addEventListener("click", () => { setValues(values); predict(); });
+    examplesEl.appendChild(b);
+  });
+
+  function showError(msg) {
+    const p = document.createElement("p");
+    p.className = "error";
+    p.textContent = msg;
+    document.getElementById("out").replaceChildren(p);
+  }
+
+  function showResult(data) {
+    const out = document.getElementById("out");
+    out.replaceChildren();
+    data.top3.forEach(item => {
+      const pct = Math.round(item.proba * 100);
+      const row = document.createElement("div");
+      row.className = "result";
+      row.innerHTML = `<span class="name"></span><div class="track"><div class="fill"></div></div><span class="pct">${pct} %</span>`;
+      row.querySelector(".name").textContent = item.genre;
+      row.querySelector(".fill").style.width = pct + "%";
+      out.appendChild(row);
+    });
+    setFooter(data.model_name, data.model_version);
+  }
+
+  function setFooter(name, version) {
+    document.getElementById("footer").textContent = `Modèle ${name} — version ${version}`;
+  }
+
+  async function predict() {
+    const btn = document.getElementById("predict");
+    const body = {};
+    FEATURES.forEach(f => { body[f.key] = parseFloat(inputs[f.key].input.value); });
+    btn.disabled = true;
+    try {
+      const res = await fetch("/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 503) {
+        showError("Le modèle n'est pas encore prêt. Réessaie dans quelques secondes.");
+      } else if (!res.ok) {
+        showError("Valeurs refusées par l'API (code " + res.status + "). Vérifie les réglages.");
+      } else {
+        showResult(await res.json());
+      }
+    } catch (e) {
+      showError("Impossible de joindre l'API. Vérifie ta connexion.");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("predict").addEventListener("click", predict);
+
+  // Version du modèle affichée dès le chargement de la page
+  fetch("/model-info")
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(info => setFooter(info.model_name, info.model_version))
+    .catch(() => { document.getElementById("footer").textContent = "Modèle genre-classifier — version indisponible"; });
+</script>
+</body>
+</html>
