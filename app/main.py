@@ -1,18 +1,21 @@
 """API FastAPI : /, /predict, /model-info, /health, /ready, /admin/reload."""
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.model_loader import ModelHolder
 from app.schemas import PredictRequest, PredictResponse
 
-logging.basicConfig(level=logging.INFO)  # logs sur stdout (12-factor XI)
+logging.basicConfig(level=logging.INFO)
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -21,13 +24,20 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     holder = ModelHolder()
-    holder.try_load()            # ne plante pas si le registry est injoignable
-    holder.start_retry_thread()  # nouvelle tentative toutes les 30 s tant que pas prêt
+    holder.try_load()
+    holder.start_retry_thread()
     app.state.holder = holder
     yield
 
 
 app = FastAPI(title="Genre classifier", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    """422 sans renvoyer la valeur fautive : NaN/inf ne sont pas sérialisables en JSON (sinon 500)."""
+    errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 def _holder(request: Request) -> ModelHolder:
@@ -75,9 +85,8 @@ def predict(payload: PredictRequest, request: Request):
 
 @app.post("/admin/reload")
 def reload_model(request: Request, x_admin_token: Annotated[str | None, Header()] = None):
-    """Plan B pour le CT : relit l'alias champion sans redéployer l'image."""
     expected = os.getenv("ADMIN_TOKEN")
-    if not expected or x_admin_token != expected:
+    if not expected or not x_admin_token or not secrets.compare_digest(x_admin_token, expected):
         raise HTTPException(status_code=403, detail="Forbidden")
     h = _holder(request)
     if not h.try_load():
