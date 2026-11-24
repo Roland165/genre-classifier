@@ -4,7 +4,7 @@ dvc[azure]==3.*
 huggingface_hub
 pytest
 httpx
-ruff
+ruff==0.17.*
 matplotlib
 pyyaml
 requests
