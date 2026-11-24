@@ -221,3 +221,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.env
+mlruns/
+mlflow.db
+/data/eval
+/data/v1
+/data/v2
+*.csv

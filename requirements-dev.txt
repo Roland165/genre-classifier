@@ -1,0 +1,10 @@
+-r requirements.txt
+mlflow==2.17.*
+dvc[azure]==3.*
+huggingface_hub
+pytest
+httpx
+ruff
+matplotlib
+pyyaml
+requests
