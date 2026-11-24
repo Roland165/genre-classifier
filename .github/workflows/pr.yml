@@ -1,0 +1,63 @@
+name: pr-checks
+
+# Runs on every PR towards the protected branches.
+# The 3 job names (lint, test, docker-smoke) are the required status checks
+# in the branch rulesets: don't rename them without updating the rulesets.
+on:
+  pull_request:
+    branches: [dev, staging, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install "ruff==0.17.*"
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements-dev.txt
+      # tests run offline: local test model + SQLite registry, no DagsHub / Azure
+      - run: pytest -q
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements.txt requests
+      - name: Build test model
+        run: python tests/fixtures/make_test_model.py --out test-model
+      - name: Build image
+        run: docker build --build-arg GIT_SHA=${{ github.sha }} -t app:ci .
+      - name: Start container
+        run: >
+          docker run -d --name app -p 8000:8000
+          -v "$PWD/test-model:/models/test-model:ro"
+          -e MODEL_URI=/models/test-model -e MODEL_VERSION=test
+          app:ci
+      - name: Smoke test
+        run: >
+          python scripts/smoke_test.py --url http://localhost:8000
+          --expected-version test --expected-sha ${{ github.sha }} --timeout 90
+      - name: Container logs
+        if: always()
+        run: docker logs app || true
