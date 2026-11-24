@@ -9,23 +9,24 @@ import argparse
 import os
 import subprocess
 
-import matplotlib
 import mlflow
 import pandas as pd
 import yaml
 from dotenv import load_dotenv
+from matplotlib.figure import Figure
 from mlflow import MlflowClient
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (ConfusionMatrixDisplay, accuracy_score,
-                             classification_report, f1_score)
+from sklearn.metrics import (
+    ConfusionMatrixDisplay,
+    accuracy_score,
+    classification_report,
+    f1_score,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ml import config
-
-matplotlib.use("Agg")  # no window, just save the plot
-import matplotlib.pyplot as plt  # noqa: E402
 
 load_dotenv()  # reads .env locally, does nothing in GitHub Actions
 
@@ -36,8 +37,9 @@ def get_git_sha():
     if os.getenv("GITHUB_SHA"):
         return os.getenv("GITHUB_SHA")
     try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
-    except Exception:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                       stderr=subprocess.DEVNULL).decode().strip()
+    except (subprocess.CalledProcessError, OSError):
         return "unknown"
 
 
@@ -101,11 +103,11 @@ def train(version, model_type):
         # evaluation artifacts
         report = classification_report(y_eval, preds)
         mlflow.log_text(report, "classification_report.txt")
-        fig, ax = plt.subplots(figsize=(8, 8))
+        fig = Figure(figsize=(8, 8))  # no window needed, just save the plot
+        ax = fig.subplots()
         ConfusionMatrixDisplay.from_predictions(y_eval, preds, ax=ax, xticks_rotation=45)
-        plt.tight_layout()
+        fig.tight_layout()
         mlflow.log_figure(fig, "confusion_matrix.png")
-        plt.close(fig)
 
         # log + register the model (new version, no alias yet)
         mlflow.sklearn.log_model(

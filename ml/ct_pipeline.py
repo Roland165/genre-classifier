@@ -47,8 +47,7 @@ def write_github_output(**values):
     path = os.getenv("GITHUB_OUTPUT")
     if path:
         with open(path, "a") as f:
-            for key, value in values.items():
-                f.write(f"{key}={value}\n")
+            f.writelines(f"{key}={value}\n" for key, value in values.items())
 
 
 def run(version, model_type, force=False):
