@@ -24,5 +24,6 @@ USER appuser
 
 EXPOSE 8000
 
-# Le port vient de l'environnement (Render fournit $PORT)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# Le port vient de l'environnement (Render fournit $PORT).
+# `exec` : uvicorn devient le processus principal et reçoit SIGTERM (arrêt propre).
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
