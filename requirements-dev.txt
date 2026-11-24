@@ -8,3 +8,5 @@ ruff
 matplotlib
 pyyaml
 requests
+python-dotenv
+sqlalchemy<2.1
