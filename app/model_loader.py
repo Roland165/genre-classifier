@@ -73,7 +73,8 @@ class ModelHolder:
     def _check(model):
         df = pd.DataFrame([SAMPLE_INPUT], columns=FEATURES)
         proba = model.predict_proba(df)[0]
-        assert len(proba) == len(model.classes_)
+        if len(proba) != len(model.classes_):
+            raise ValueError("predict_proba output does not match model.classes_")
 
     def predict_top3(self, features: dict):
         with self._lock:
