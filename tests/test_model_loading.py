@@ -10,7 +10,8 @@ ADMIN = {"X-Admin-Token": ADMIN_TOKEN}
 
 def test_loads_champion_even_if_a_newer_version_exists(test_registry):
     # Le registry contient v1 (champion) et v2 (plus récente, sans alias)
-    assert {str(mv.version) for mv in test_registry.search_model_versions(f"name='{MODEL_NAME}'")} == {"1", "2"}
+    versions = test_registry.search_model_versions(f"name='{MODEL_NAME}'")
+    assert {str(mv.version) for mv in versions} == {"1", "2"}
     holder = ModelHolder()
     assert holder.try_load() is True
     assert holder.version == "1"
