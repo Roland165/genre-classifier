@@ -1,0 +1,42 @@
+{
+  "rows_selected_genres": 8000,
+  "rows_after_filter": 7999,
+  "eval_rows": 1463,
+  "v1_rows": 3262,
+  "v2_rows": 5870,
+  "v2_removed_duplicates": 67,
+  "v2_removed_conflicting_labels": 580,
+  "rows_per_genre": {
+    "eval": {
+      "classical": 183,
+      "country": 198,
+      "hip-hop": 154,
+      "jazz": 197,
+      "metal": 197,
+      "pop": 168,
+      "reggae": 167,
+      "techno": 199
+    },
+    "v1": {
+      "classical": 390,
+      "country": 428,
+      "hip-hop": 400,
+      "jazz": 395,
+      "metal": 409,
+      "pop": 395,
+      "reggae": 417,
+      "techno": 428
+    },
+    "v2": {
+      "classical": 733,
+      "country": 796,
+      "hip-hop": 620,
+      "jazz": 790,
+      "metal": 789,
+      "pop": 673,
+      "reggae": 669,
+      "techno": 800
+    }
+  },
+  "seed": 42
+}

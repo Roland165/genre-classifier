@@ -1,0 +1,32 @@
+# Git et CI
+.git
+.github
+
+# DVC et données : jamais dans l'image
+.dvc
+.dvcignore
+data/
+*.csv
+
+# Code hors production
+ml/
+tests/
+scripts/
+
+# Environnements, secrets, artefacts locaux
+.venv/
+.env
+.env.*
+mlruns/
+mlflow.db
+test-model/
+
+# Fichiers de développement
+requirements-dev.txt
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.md
+Dockerfile
+.dockerignore

@@ -1,0 +1,85 @@
+name: continuous-training
+
+# Manual trigger (Actions -> continuous-training -> Run workflow).
+# 1. fetch the dataset release from DVC/Azure and validate it (failure = stop, prod untouched)
+# 2-4. evaluate champion -> decide -> train candidate -> compare -> promote or keep (ml/ct_pipeline.py)
+# then refresh prod if a new champion was promoted, and always check what prod serves.
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_version:
+        description: Dataset version (DVC)
+        type: choice
+        options: [v1, v2]
+        required: true
+      model_type:
+        description: Candidate model
+        type: choice
+        options: [rf, logreg]
+        default: rf
+      force_retrain:
+        description: Retrain even if the data did not change
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# CT and rollback both move the champion alias: never run them at the same time
+concurrency:
+  group: model-registry
+  cancel-in-progress: false
+
+jobs:
+  ct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+      PROD_URL: ${{ secrets.PROD_URL }}
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      DATASET_VERSION: ${{ inputs.dataset_version }}
+      MODEL_TYPE: ${{ inputs.model_type }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: pip install -r requirements-dev.txt
+
+      - name: 1. Fetch dataset release (DVC + Azure)
+        run: |
+          dvc remote modify --local azure connection_string "$AZURE_STORAGE_CONNECTION_STRING"
+          dvc pull "data/${DATASET_VERSION}.dvc" data/eval.dvc
+
+      - name: 1. Validate data (failure stops here, prod untouched)
+        run: python -m ml.validate_data --version "$DATASET_VERSION"
+
+      - name: 2-4. Evaluate, decide, train, compare, promote
+        id: ct
+        run: >
+          python -m ml.ct_pipeline --version "$DATASET_VERSION" --model "$MODEL_TYPE"
+          ${{ inputs.force_retrain && '--force' || '' }}
+
+      - name: 4. Refresh production (new champion only)
+        if: steps.ct.outputs.promoted == 'true'
+        run: bash scripts/refresh_prod.sh
+
+      # runs even when the candidate is rejected: proves prod still serves the champion
+      - name: 4. Verify live version
+        run: >
+          python scripts/smoke_test.py --url "$PROD_URL"
+          --expected-version "${{ steps.ct.outputs.champion_version }}" --timeout 900
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### CT run: data=${DATASET_VERSION}, model=${MODEL_TYPE}, force=${{ inputs.force_retrain }}"
+            echo "- retrained: ${{ steps.ct.outputs.retrained }}"
+            echo "- promoted: ${{ steps.ct.outputs.promoted }}"
+            echo "- champion version now: ${{ steps.ct.outputs.champion_version }}"
+          } >> "$GITHUB_STEP_SUMMARY"
