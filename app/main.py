@@ -1,4 +1,5 @@
-"""API FastAPI : /, /predict, /model-info, /health, /ready, /admin/reload."""
+"""API FastAPI : /, /predict, /model-info, /health, /ready, /admin/reload, /game."""
+import json
 import logging
 import os
 import secrets
@@ -19,6 +20,7 @@ logging.basicConfig(level=logging.INFO)
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+GAME_TRACKS_FILE = BASE_DIR / "game_tracks.json"
 
 
 @asynccontextmanager
@@ -47,6 +49,20 @@ def _holder(request: Request) -> ModelHolder:
 @app.get("/")
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
+
+
+@app.get("/game")
+def game(request: Request):
+    return templates.TemplateResponse(request, "game.html")
+
+
+@app.get("/game/tracks")
+def game_tracks():
+    """Example tracks for the game (taken from the held-out eval set by ml/make_game_tracks.py)."""
+    try:
+        return json.loads(GAME_TRACKS_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
 
 
 @app.get("/health")

@@ -3,7 +3,7 @@ import logging
 import os
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import mlflow.sklearn
 import pandas as pd
@@ -47,7 +47,7 @@ class ModelHolder:
         self._check(model)  # vérifie que le modèle prédit vraiment
         with self._lock:
             self.model, self.version = model, version
-            self.loaded_at = datetime.now(UTC).isoformat()
+            self.loaded_at = datetime.now(timezone.utc).isoformat()
             self.ready, self.last_error = True, None
         logger.info("Model %s loaded (version %s)", self.name, version)
 
