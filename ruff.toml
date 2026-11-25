@@ -1,0 +1,8 @@
+# Shared lint config: same rules locally and in CI (pr.yml).
+# Ruff's version is pinned in requirements-dev.txt so new releases can't break the build.
+target-version = "py311"
+line-length = 110
+extend-exclude = [".venv", "data", "mlruns"]
+
+[lint]
+select = ["E", "F"]   # pycodestyle errors + pyflakes (unused imports, undefined names...)
