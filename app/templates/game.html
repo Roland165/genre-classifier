@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Beat the AI - Music Genre Classifier{% endblock %}
+{% block nav_game %}active{% endblock %}
+
+{% block style %}
+  .score { display: flex; gap: 12px; margin-bottom: 18px; }
+  .score > div { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 18px; }
+  .score .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+  .score .value { font-size: 2rem; font-weight: 700; }
+  .round { color: var(--muted); font-size: .9rem; margin: 0 0 10px; }
+  iframe { border: 0; border-radius: 12px; width: 100%; height: 152px; display: block; }
+  .question { margin: 18px 0 10px; }
+  .genres { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .genres button { padding: 12px 8px; }
+  .genres button.picked { outline: 2px solid var(--ink); opacity: 1; }
+  .genres button.truth { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); opacity: 1; }
+  .result { margin-top: 18px; display: none; }
+  .verdicts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .verdict { border-radius: 12px; padding: 12px 14px; border: 1px solid var(--line); }
+  .verdict b { display: block; font-size: 1.05rem; }
+  .verdict.ok { border-color: var(--good); } .verdict.ok b { color: var(--good); }
+  .verdict.ko { border-color: var(--bad); }  .verdict.ko b { color: var(--bad); }
+  .truth-line { margin: 14px 0 6px; }
+  .result .dark { margin-top: 14px; }
+  .final { text-align: center; padding: 24px 10px; }
+  .final .big { font-size: 2.6rem; font-weight: 700; margin: 6px 0 16px; }
+  @media (max-width: 600px) { .genres { grid-template-columns: repeat(2, 1fr); } .verdicts { grid-template-columns: 1fr; } }
+{% endblock %}
+
+{% block content %}
+  <h1>Beat the AI</h1>
+  <p class="lead">Listen to a real track the model has never seen, pick its genre, then see if you did better than the model.</p>
+
+  <div class="score">
+    <div><div class="label">You</div><div class="value" id="score-you">0</div></div>
+    <div><div class="label">AI</div><div class="value" id="score-ai">0</div></div>
+  </div>
+
+  <section class="card" id="game">
+    <p class="round" id="round"></p>
+    <div id="player"></div>
+
+    <h2 class="question">What genre is it?</h2>
+    <div class="genres" id="genres"></div>
+
+    <div class="result" id="result" aria-live="polite">
+      <div class="verdicts">
+        <div class="verdict" id="v-you"></div>
+        <div class="verdict" id="v-ai"></div>
+      </div>
+      <p class="truth-line" id="truth"></p>
+      <div id="bars"></div>
+      <button class="dark" id="next" type="button">Next track</button>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const GENRES = ["classical", "country", "hip-hop", "jazz", "metal", "pop", "reggae", "techno"];
+  const ROUNDS = 10;
+  let tracks = [], round = 0, you = 0, ai = 0;
+  const total = () => Math.min(ROUNDS, tracks.length);
+
+  function shuffle(list) {
+    const a = list.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function showRound() {
+    const t = tracks[round];
+    $("round").textContent = `Track ${round + 1} / ${total()}`;
+    $("player").innerHTML =
+      `<iframe title="Spotify player" loading="lazy" allow="encrypted-media; clipboard-write; fullscreen"
+        src="https://open.spotify.com/embed/track/${encodeURIComponent(t.track_id)}"></iframe>`;
+    $("result").style.display = "none";
+    $("genres").innerHTML = "";
+    GENRES.forEach((g) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = g;
+      b.onclick = () => answer(g, b);
+      $("genres").appendChild(b);
+    });
+  }
+
+  async function answer(guess, button) {
+    const t = tracks[round];
+    document.querySelectorAll("#genres button").forEach((b) => (b.disabled = true));
+    button.classList.add("picked");
+
+    let top3;
+    try {
+      top3 = (await predict(t.features)).top3;
+    } catch (e) {
+      $("truth").innerHTML = `<span class="error">${escapeHtml(e.message)}</span>`;
+      $("bars").innerHTML = "";
+      $("result").style.display = "block";
+      return;
+    }
+
+    const aiGuess = top3[0].genre;
+    const youOk = guess === t.genre, aiOk = aiGuess === t.genre;
+    if (youOk) you++;
+    if (aiOk) ai++;
+    $("score-you").textContent = you;
+    $("score-ai").textContent = ai;
+
+    document.querySelectorAll("#genres button").forEach((b) => {
+      if (b.textContent === t.genre) b.classList.add("truth");
+    });
+    $("v-you").className = "verdict " + (youOk ? "ok" : "ko");
+    $("v-you").innerHTML = `<b>You: ${youOk ? "correct" : "wrong"}</b>you said ${guess}`;
+    $("v-ai").className = "verdict " + (aiOk ? "ok" : "ko");
+    $("v-ai").innerHTML = `<b>AI: ${aiOk ? "correct" : "wrong"}</b>it said ${escapeHtml(aiGuess)}`;
+    $("truth").innerHTML = `It was <b>${t.genre}</b>: ${escapeHtml(t.name)} by ${escapeHtml(t.artists)}. Model confidence:`;
+    renderBars($("bars"), top3);
+    $("next").textContent = round + 1 >= total() ? "See the final score" : "Next track";
+    $("result").style.display = "block";
+  }
+
+  function next() {
+    round++;
+    if (round >= total()) return showFinal();
+    showRound();
+  }
+
+  function showFinal() {
+    const msg = you > ai ? "You beat the AI!" : you === ai ? "It's a draw." : "The AI wins this time.";
+    $("game").innerHTML =
+      `<div class="final"><p>${msg}</p><p class="big">You ${you} - ${ai} AI</p>
+       <button class="primary" type="button" onclick="location.reload()">Play again</button></div>`;
+  }
+
+  async function start() {
+    const res = await fetch("/game/tracks");
+    tracks = shuffle(await res.json());
+    if (tracks.length === 0) {
+      $("round").textContent = "No tracks available.";
+      return;
+    }
+    showRound();
+  }
+
+  $("next").onclick = next;
+  start();
+</script>
+{% endblock %}
